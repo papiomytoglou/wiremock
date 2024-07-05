@@ -22,7 +22,12 @@ import com.github.tomakehurst.wiremock.common.DateTimeOffset;
 import com.github.tomakehurst.wiremock.common.DateTimeParser;
 import com.github.tomakehurst.wiremock.common.DateTimeTruncation;
 import com.github.tomakehurst.wiremock.common.DateTimeUnit;
-import java.time.*;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
@@ -35,9 +40,11 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
   private DateTimeOffset expectedOffset;
   private DateTimeTruncation truncateExpected;
   private DateTimeTruncation truncateActual;
+  private boolean applyTruncationLast = false;
+  private Clock clock = Clock.systemDefaultZone();
 
   protected AbstractDateTimePattern(String dateTimeSpec) {
-    this(dateTimeSpec, null, (DateTimeTruncation) null, null, null, null);
+    this(dateTimeSpec, null, (DateTimeTruncation) null, null, false, null, null);
   }
 
   protected AbstractDateTimePattern(
@@ -62,6 +69,7 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
       String actualDateFormat,
       String truncateExpected,
       String truncateActual,
+      boolean applyTruncationLast,
       Integer expectedOffsetAmount,
       DateTimeUnit expectedOffsetUnit) {
     this(
@@ -69,6 +77,7 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
         actualDateFormat,
         truncateExpected != null ? DateTimeTruncation.fromString(truncateExpected) : null,
         truncateActual != null ? DateTimeTruncation.fromString(truncateActual) : null,
+        applyTruncationLast,
         expectedOffsetAmount,
         expectedOffsetUnit);
   }
@@ -78,6 +87,7 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
       String actualDateFormat,
       DateTimeTruncation truncateExpected,
       DateTimeTruncation truncateActual,
+      boolean applyTruncationLast,
       Integer expectedOffsetAmount,
       DateTimeUnit expectedOffsetUnit) {
     super(dateTimeSpec);
@@ -101,6 +111,7 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
 
     this.truncateExpected = truncateExpected;
     this.truncateActual = truncateActual;
+    this.applyTruncationLast = applyTruncationLast;
   }
 
   public AbstractDateTimePattern(ZonedDateTime zonedDateTime) {
@@ -179,6 +190,18 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
     return (T) this;
   }
 
+  @SuppressWarnings("unchecked")
+  public <T extends AbstractDateTimePattern> T applyTruncationLast(boolean applyTruncationLast) {
+    this.applyTruncationLast = applyTruncationLast;
+    return (T) this;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T extends AbstractDateTimePattern> T clock(Clock clock) {
+    this.clock = clock;
+    return (T) this;
+  }
+
   public String getActualFormat() {
     return actualDateTimeFormat;
   }
@@ -211,10 +234,15 @@ public abstract class AbstractDateTimePattern extends StringValuePattern {
   }
 
   private ZonedDateTime calculateExpectedFromNow() {
-    final ZonedDateTime now = ZonedDateTime.now();
-    final ZonedDateTime truncated = truncateExpected != null ? truncateExpected.truncate(now) : now;
-
-    return expectedOffset.shift(truncated);
+    final ZonedDateTime now = ZonedDateTime.now(clock);
+    if (applyTruncationLast) {
+      final ZonedDateTime shifted = expectedOffset.shift(now);
+      return truncateExpected != null ? truncateExpected.truncate(shifted) : shifted;
+    } else {
+      final ZonedDateTime truncated =
+          truncateExpected != null ? truncateExpected.truncate(now) : now;
+      return expectedOffset.shift(truncated);
+    }
   }
 
   protected abstract MatchResult getMatchResult(

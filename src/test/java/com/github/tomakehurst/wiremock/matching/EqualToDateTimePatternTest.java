@@ -15,6 +15,7 @@
  */
 package com.github.tomakehurst.wiremock.matching;
 
+import static com.github.tomakehurst.wiremock.common.DateTimeTruncation.LAST_DAY_OF_MONTH;
 import static java.time.temporal.ChronoUnit.DAYS;
 import static java.time.temporal.ChronoUnit.HOURS;
 import static net.javacrumbs.jsonunit.JsonMatchers.jsonEquals;
@@ -28,11 +29,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.common.DateTimeOffset;
 import com.github.tomakehurst.wiremock.common.DateTimeTruncation;
+import com.github.tomakehurst.wiremock.common.DateTimeUnit;
 import com.github.tomakehurst.wiremock.common.Json;
 import com.github.tomakehurst.wiremock.http.MultiValue;
 import com.google.common.collect.Lists;
-import java.time.*;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import org.junit.jupiter.api.Test;
 
 public class EqualToDateTimePatternTest {
@@ -149,6 +159,28 @@ public class EqualToDateTimePatternTest {
 
     assertTrue(matcher.match(good).isExactMatch());
     assertFalse(matcher.match(bad).isExactMatch());
+  }
+
+  @Test
+  public void testApplyTruncationLast() {
+    AbstractDateTimePattern matcher =
+        WireMock.equalToDateTime("now")
+            .expectedOffset(1, DateTimeUnit.MONTHS)
+            .truncateExpected(LAST_DAY_OF_MONTH)
+            .clock(Clock.fixed(Instant.parse("2024-02-01T00:00:00Z"), ZoneOffset.UTC));
+    ;
+    ZonedDateTime lastDayOfMarch =
+        ZonedDateTime.parse("2024-02-01T00:00:00Z")
+            .plusMonths(1)
+            .with(TemporalAdjusters.lastDayOfMonth());
+
+    // Matcher expects March 29th when applyTruncationLast is set to false
+    assertFalse(matcher.match(lastDayOfMarch.toString()).isExactMatch());
+
+    AbstractDateTimePattern matcherWithApplyTruncationLast = matcher.applyTruncationLast(true);
+
+    // Matcher expects March 31st when applyTruncationLast is set to true
+    assertTrue(matcherWithApplyTruncationLast.match(lastDayOfMarch.toString()).isExactMatch());
   }
 
   @Test
